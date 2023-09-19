@@ -5,4 +5,6 @@ This game is created by Chat GPT-4 in 100%, I only gave the order and did the de
 
 Key `Z` is used to swithc the firearms between Spray and Laser.
 
+Use `enter` key to restart the game when you are "Game Over".
+
 <img src="/Galaxian.jpg">
