@@ -18,7 +18,6 @@ pygame.init()
 # Configuration
 BACKGROUND_COLOR = (0, 0, 0)
 ENEMY_COLOR = (255, 255, 255)
-BULLET_COLOR = (255, 255, 255)
 SHIP_COLOR = (0, 0, 255)
 NUM_ENEMIES = 5
 ENEMY_BULLET_CHANCE = 0.01
@@ -63,7 +62,7 @@ class Enemy(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.start_x = random.randint(0, WIDTH - ENEMY_WIDTH)
         self.rect.x = self.start_x
-        self.rect.y = random.randint(0, HEIGHT - ENEMY_HEIGHT)
+        self.rect.y = random.randint(0, HEIGHT // 2 - ENEMY_HEIGHT)
         self.angle = random.uniform(0, math.pi * 2)
 
     def draw_bee(self):
@@ -83,15 +82,37 @@ class Enemy(pygame.sprite.Sprite):
         self.rect.y = (self.rect.y + ENEMY_SPEED) % HEIGHT
 
         if random.random() < ENEMY_BULLET_CHANCE:
-            bullet = Bullet(self.rect.centerx, self.rect.bottom)
+            bullet = EnemyBullet(self.rect.centerx, self.rect.bottom)
             bullets.add(bullet)
 
+class EnemyBullet(pygame.sprite.Sprite):
+    ENEMY_BULLET_COLOR = (255, 255, 0)
+    
+    def __init__(self, x, y, dx=0, dy=BULLET_SPEED):
+        super().__init__()
+        self.image = pygame.Surface([BULLET_WIDTH, BULLET_HEIGHT])
+        self.image.fill(self.ENEMY_BULLET_COLOR)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.dx = dx
+        self.dy = dy
+        self.shooter = "enemy"
+
+    def update(self):
+        self.rect.x += self.dx
+        self.rect.y += self.dy
+        if self.rect.y > HEIGHT or self.rect.x < 0 or self.rect.x > WIDTH:
+            self.kill()
+
 class Bullet(pygame.sprite.Sprite):
+    BULLET_COLOR = (255, 255, 255)
+    
     def __init__(self, x, y, shooter="enemy", dx=0, dy=BULLET_SPEED):
         super().__init__()
         self.shooter = shooter
         self.image = pygame.Surface([BULLET_WIDTH, BULLET_HEIGHT])
-        self.image.fill(BULLET_COLOR)
+        self.image.fill(self.BULLET_COLOR)
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
@@ -108,11 +129,12 @@ class Bullet(pygame.sprite.Sprite):
             self.kill()
 
 class Laser(pygame.sprite.Sprite):
+    LASER_COLOR = (255, 255, 255)
+
     def __init__(self, x, y):
         super().__init__()
-        self.shooter = "player"  # Add this line
         self.image = pygame.Surface([LASER_WIDTH, LASER_HEIGHT], pygame.SRCALPHA)
-        pygame.draw.line(self.image, BULLET_COLOR, (LASER_WIDTH // 2, 0), (LASER_WIDTH // 2, LASER_HEIGHT), LASER_WIDTH)
+        pygame.draw.line(self.image, self.LASER_COLOR, (LASER_WIDTH // 2, 0), (LASER_WIDTH // 2, LASER_HEIGHT), LASER_WIDTH)
         self.rect = self.image.get_rect()
         self.rect.centerx = x
         self.rect.y = y
@@ -122,19 +144,20 @@ class Laser(pygame.sprite.Sprite):
         if self.rect.bottom < 0:
             self.kill()
 
-class PlayerBullet(pygame.sprite.Sprite):
+class Spray(pygame.sprite.Sprite):
+    SPRAY_COLOR = (255, 255, 255)
+    
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface([BULLET_WIDTH, BULLET_HEIGHT])
-        self.image.fill(BULLET_COLOR)
-        self.rect = self.image.get_rect()
-        self.rect.x = x
-        self.rect.y = y
 
-    def update(self):
-        self.rect.y -= BULLET_SPEED
-        if self.rect.y < 0:
-            self.kill()
+        # Create the 5 bullets in a spray pattern
+        spread_angles = [-60, -30, 0, 30, 60]  # angles covering 120 degrees
+        for angle in spread_angles:
+            dx = BULLET_SPEED * math.sin(math.radians(angle))
+            dy = BULLET_SPEED * math.cos(math.radians(angle))
+            bullet = Bullet(x, y, "player", dx, dy)
+            bullet.image.fill(self.SPRAY_COLOR)  # Change the bullet color to spray color
+            bullets.add(bullet)
 
 class Spaceship(pygame.sprite.Sprite):
     def __init__(self):
@@ -144,7 +167,7 @@ class Spaceship(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.x = (WIDTH - SHIP_WIDTH) / 2
         self.rect.y = HEIGHT - SHIP_HEIGHT - 10
-        self.bullet_type = "spray"
+        self.bullet_type = "default"
 
     def draw_rocket(self):
         # Body of the airplane
@@ -164,21 +187,21 @@ class Spaceship(pygame.sprite.Sprite):
         self.rect.x = max(0, min(WIDTH - SHIP_WIDTH, self.rect.x))
 
     def shoot(self):
-        if self.bullet_type == "spray":
-            spread_angles = [-30, 0, 30]  # angles covering 120 degrees
-            for angle in spread_angles:
-                dx = BULLET_SPEED * math.sin(math.radians(angle))
-                dy = BULLET_SPEED * math.cos(math.radians(angle))
-                bullet = Bullet(self.rect.centerx, self.rect.top, "player", dx, dy)
-                bullets.add(bullet)
+        if self.bullet_type == "default":
+            bullet1 = Bullet(self.rect.left + SHIP_WIDTH // 4, self.rect.top, "player")
+            bullet2 = Bullet(self.rect.right - SHIP_WIDTH // 4, self.rect.top, "player")
+            bullets.add(bullet1, bullet2)
+        elif self.bullet_type == "spray":
+            spray = Spray(self.rect.centerx, self.rect.top)
         elif self.bullet_type == "laser":
-            bullets.add(Laser(self.rect.centerx, 0))
+            laser = Laser(self.rect.centerx, 0)
+            bullets.add(laser)
 
     def toggle_bullet_type(self):
-        if self.bullet_type == "spray":
-            self.bullet_type = "laser"
-        else:
-            self.bullet_type = "spray"
+        bullet_types = ["default", "spray", "laser"]
+        current_index = bullet_types.index(self.bullet_type)
+        self.bullet_type = bullet_types[(current_index + 1) % len(bullet_types)]
+
 
 def game_over_screen():
     font = pygame.font.SysFont('Arial', 36)
@@ -208,8 +231,8 @@ for i in range(NUM_ENEMIES):
 running = True
 clock = pygame.time.Clock()
 
-#AUTOMATIC_SHOOT_EVENT = pygame.USEREVENT + 2
-#pygame.time.set_timer(AUTOMATIC_SHOOT_EVENT, 1000)  # spaceship shoots every 0.5 seconds
+AUTOMATIC_SHOOT_EVENT = pygame.USEREVENT + 2
+pygame.time.set_timer(AUTOMATIC_SHOOT_EVENT, 500)  # spaceship shoots every 0.5 seconds
 
 while running:
     keys = pygame.key.get_pressed()
@@ -220,10 +243,10 @@ while running:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_z:
                 spaceship.toggle_bullet_type()
-        #if event.type == AUTOMATIC_SHOOT_EVENT:
-        #    spaceship.shoot()
             if event.key == pygame.K_SPACE:
                 spaceship.shoot()
+        if event.type == AUTOMATIC_SHOOT_EVENT:
+            spaceship.shoot()
         if event.type == SPAWN_ENEMY_EVENT:
             enemy = Enemy()
             enemies.add(enemy)
@@ -245,8 +268,12 @@ while running:
         pass
 
     # Check bullet collisions with spaceship (only consider enemy bullets)
-    enemy_bullets = [bullet for bullet in bullets if bullet.shooter == "enemy"]
-    spaceship_bullet_collisions = pygame.sprite.spritecollide(spaceship, enemy_bullets, False, pygame.sprite.collide_mask)
+    enemy_bullets = [bullet for bullet in bullets if isinstance(bullet, EnemyBullet)]
+    enemy_bullets_group = pygame.sprite.Group(*enemy_bullets)  # Convert the list into a Group
+
+    spaceship_bullet_collisions = pygame.sprite.spritecollide(spaceship, enemy_bullets_group, True, pygame.sprite.collide_mask) 
+    # Notice the True here, this means the bullets will be removed upon collision
+    
     if spaceship_bullet_collisions:
         spaceship.kill()
         # Show the game over screen and check if the game should restart
